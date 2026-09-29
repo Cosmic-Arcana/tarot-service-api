@@ -4,12 +4,14 @@ import { SPREAD_REPOSITORY } from './application/ports/spread-repository.port';
 import { CreateSpreadHandler } from './application/commands/create-spread.handler';
 import { GetSpreadHandler } from './application/queries/get-spread.handler';
 import { StubSpreadGenerator } from './infrastructure/stub-spread-generator';
+import { LiveSpreadsHub } from './infrastructure/live-spreads.hub';
 import { TypeOrmSpreadRepository } from './infrastructure/typeorm-spread.repository';
 import { SpreadsController } from './http/spreads.controller';
 
 @Module({
   controllers: [SpreadsController],
   providers: [
+    LiveSpreadsHub,
     CreateSpreadHandler,
     GetSpreadHandler,
     { provide: SPREAD_REPOSITORY, useClass: TypeOrmSpreadRepository },

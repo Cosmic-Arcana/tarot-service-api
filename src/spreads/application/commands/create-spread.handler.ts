@@ -6,6 +6,7 @@ import { IdempotencyKeyConflictError } from '../../domain/idempotency-key-confli
 import type { Spread } from '../../domain/spread';
 import { SPREAD_GENERATOR, type SpreadGeneratorPort } from '../ports/spread-generator.port';
 import { SPREAD_REPOSITORY, type SpreadRepositoryPort } from '../ports/spread-repository.port';
+import { LiveSpreadsHub } from '../../infrastructure/live-spreads.hub';
 import { spreadCreatedMessage } from '../spread-created.message';
 import { CreateSpreadCommand, type CreateSpreadResult } from './create-spread.command';
 
@@ -16,6 +17,7 @@ export class CreateSpreadHandler implements ICommandHandler<CreateSpreadCommand>
   constructor(
     @Inject(SPREAD_REPOSITORY) private readonly spreads: SpreadRepositoryPort,
     @Inject(SPREAD_GENERATOR) private readonly generator: SpreadGeneratorPort,
+    private readonly liveSpreads: LiveSpreadsHub,
   ) {}
 
   async execute(command: CreateSpreadCommand): Promise<CreateSpreadResult> {
@@ -50,6 +52,7 @@ export class CreateSpreadHandler implements ICommandHandler<CreateSpreadCommand>
       return this.replay(winner, command);
     }
 
+    this.liveSpreads.broadcastDrawn(spread);
     this.logger.log('create spread completed', {
       spreadId: spread.id,
       idempotencyKey: command.idempotencyKey,
