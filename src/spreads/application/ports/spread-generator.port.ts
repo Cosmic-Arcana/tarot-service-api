@@ -2,8 +2,7 @@ import type { SpreadCard } from '../../domain/spread';
 
 export const SPREAD_GENERATOR = Symbol('SPREAD_GENERATOR');
 
-// TODO(product): the spread shape, card set and prediction format are undefined. ai-service-api
-// will back this port; until then only the stub exists.
+/** One 3-card spread: past / present / future. Stub prediction until the LLM path is wired. */
 export interface GeneratedSpread {
   cards: SpreadCard[];
   prediction: string;
