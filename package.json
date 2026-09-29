@@ -15,7 +15,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand"
   },
   "dependencies": {
-    "@cosmic-arcana/sdk": "file:../cosmic-arcana-sdk",
+    "@cosmic-arcana/sdk": "github:Cosmic-Arcana/cosmic-arcana-sdk#semver:^0.1.0",
     "@nestjs/bullmq": "^11.0.5",
     "@nestjs/common": "^11.2.5",
     "@nestjs/config": "^4.0.4",
