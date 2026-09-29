@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
-import type { IncomingMessage } from 'node:http';
+import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
 
@@ -32,7 +32,8 @@ export class LiveSpreadsHub implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly httpAdapterHost: HttpAdapterHost) {}
 
   onModuleInit(): void {
-    const server = this.httpAdapterHost.httpAdapter.getHttpServer();
+    // The adapter is transport agnostic and returns `any`; under express it is a node server.
+    const server = this.httpAdapterHost.httpAdapter.getHttpServer() as Server;
     this.wss = new WebSocketServer({ noServer: true });
     server.on('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer) => {
       const path = request.url?.split('?')[0] ?? '';
