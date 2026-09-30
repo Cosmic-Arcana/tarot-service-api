@@ -32,7 +32,8 @@ interface DrawResult {
 }
 
 interface InterpretationResult {
-  text: string;
+  interpretation: string;
+  fictional: true;
 }
 
 /**
@@ -77,7 +78,7 @@ export class AiSpreadGenerator implements SpreadGeneratorPort {
           cardId,
           reversed,
         })),
-        prediction: reading.text,
+        prediction: reading.interpretation,
       };
     } catch (error) {
       const { name, message } = error as Error;

@@ -24,7 +24,7 @@ const clientReturning = (replies: Record<string, unknown>) => ({
 describe('AiSpreadGenerator', () => {
   const replies = {
     'ai.tarot.draw': { cards: [drawnCard] },
-    'ai.reading.interpret': { text: 'a reading' },
+    'ai.reading.interpret': { interpretation: 'a reading', fictional: true },
   };
 
   it('draws the cards and asks for a reading of them', async () => {
