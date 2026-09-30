@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import type {
   GeneratedSpread,
+  GenerateSpreadRequest,
   SpreadGeneratorPort,
 } from '../application/ports/spread-generator.port';
 
@@ -10,7 +11,7 @@ const POSITIONS = ['past', 'present', 'future'] as const;
 /** Deterministic 3-card draw. Meanings still come from the stub prediction string. */
 @Injectable()
 export class StubSpreadGenerator implements SpreadGeneratorPort {
-  generate(question: string): Promise<GeneratedSpread> {
+  generate({ question }: GenerateSpreadRequest): Promise<GeneratedSpread> {
     const digest = createHash('sha256').update(question).digest('hex');
     const cards = POSITIONS.map((positionKey, index) => {
       const slice = digest.slice(index * 8, index * 8 + 8);

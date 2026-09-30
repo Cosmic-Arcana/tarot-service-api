@@ -28,7 +28,12 @@ export class CreateSpreadHandler implements ICommandHandler<CreateSpreadCommand>
 
     // Generation runs outside the transaction: it will be a slow AI call and must not hold a
     // connection. Two concurrent first requests can both generate; the unique key keeps one.
-    const generated = await this.generator.generate(command.question);
+    const askedAt = new Date();
+    const generated = await this.generator.generate({
+      question: command.question,
+      userId: command.userId,
+      askedAt: askedAt.toISOString(),
+    });
     const spread: Spread = {
       id: randomUUID(),
       userId: command.userId,
@@ -36,7 +41,7 @@ export class CreateSpreadHandler implements ICommandHandler<CreateSpreadCommand>
       idempotencyKey: command.idempotencyKey,
       cards: generated.cards,
       prediction: generated.prediction,
-      createdAt: new Date(),
+      createdAt: askedAt,
     };
     const correlationId = getCorrelationId() ?? randomUUID();
 
