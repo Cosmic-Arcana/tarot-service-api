@@ -11,6 +11,11 @@ export const validationSchema = Joi.object({
     .required(),
   DATABASE_RUN_MIGRATIONS: Joi.boolean().default(true),
 
+  SPREAD_GENERATOR: Joi.string().valid('stub', 'ai-service').default('stub'),
+  AI_SERVICE_TCP_HOST: Joi.string().hostname().default('127.0.0.1'),
+  AI_SERVICE_TCP_PORT: Joi.number().port().default(4001),
+  AI_SERVICE_TIMEOUT_MS: Joi.number().integer().min(100).default(20_000),
+
   REDIS_HOST: Joi.string().hostname().default('127.0.0.1'),
   REDIS_PORT: Joi.number().port().default(6379),
 

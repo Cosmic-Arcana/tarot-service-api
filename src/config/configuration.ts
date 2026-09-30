@@ -6,6 +6,14 @@ export interface OutboxConfig {
   deliveryBackoffMs: number;
 }
 
+export interface AiServiceConfig {
+  /** `stub` keeps generation local and deterministic; `ai-service` calls ai-service-api over tcp. */
+  generator: 'stub' | 'ai-service';
+  host: string;
+  port: number;
+  timeoutMs: number;
+}
+
 export interface AppConfig {
   serviceName: string;
   nodeEnv: string;
@@ -13,6 +21,7 @@ export interface AppConfig {
   http: { port: number };
   database: { url: string; runMigrations: boolean };
   redis: { host: string; port: number };
+  aiService: AiServiceConfig;
   outbox: OutboxConfig;
 }
 
@@ -26,6 +35,12 @@ export const configuration = (): AppConfig => ({
     runMigrations: process.env.DATABASE_RUN_MIGRATIONS === 'true',
   },
   redis: { host: process.env.REDIS_HOST as string, port: Number(process.env.REDIS_PORT) },
+  aiService: {
+    generator: process.env.SPREAD_GENERATOR as AiServiceConfig['generator'],
+    host: process.env.AI_SERVICE_TCP_HOST as string,
+    port: Number(process.env.AI_SERVICE_TCP_PORT),
+    timeoutMs: Number(process.env.AI_SERVICE_TIMEOUT_MS),
+  },
   outbox: {
     relayEnabled: process.env.OUTBOX_RELAY_ENABLED === 'true',
     pollIntervalMs: Number(process.env.OUTBOX_POLL_INTERVAL_MS),
