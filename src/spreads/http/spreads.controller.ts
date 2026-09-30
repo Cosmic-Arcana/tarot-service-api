@@ -11,6 +11,7 @@ import {
   ParseUUIDPipe,
   Post,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import { CommandBus, QueryBus } from '@nestjs/cqrs';
 import type { Response } from 'express';
@@ -25,7 +26,9 @@ import {
   isValidIdempotencyKey,
 } from './idempotency-key';
 import { toSpreadDetailsV1 } from './spread-details.mapper';
+import { InternalTokenGuard } from './internal-token.guard';
 
+@UseGuards(InternalTokenGuard)
 @Controller('spreads')
 export class SpreadsController {
   constructor(

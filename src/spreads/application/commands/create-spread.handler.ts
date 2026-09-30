@@ -6,6 +6,7 @@ import { IdempotencyKeyConflictError } from '../../domain/idempotency-key-confli
 import type { Spread } from '../../domain/spread';
 import { SPREAD_GENERATOR, type SpreadGeneratorPort } from '../ports/spread-generator.port';
 import { SPREAD_REPOSITORY, type SpreadRepositoryPort } from '../ports/spread-repository.port';
+import { LiveSpreadsHub } from '../../infrastructure/live-spreads.hub';
 import { spreadCreatedMessage } from '../spread-created.message';
 import { CreateSpreadCommand, type CreateSpreadResult } from './create-spread.command';
 
@@ -16,6 +17,7 @@ export class CreateSpreadHandler implements ICommandHandler<CreateSpreadCommand>
   constructor(
     @Inject(SPREAD_REPOSITORY) private readonly spreads: SpreadRepositoryPort,
     @Inject(SPREAD_GENERATOR) private readonly generator: SpreadGeneratorPort,
+    private readonly liveSpreads: LiveSpreadsHub,
   ) {}
 
   async execute(command: CreateSpreadCommand): Promise<CreateSpreadResult> {
@@ -26,7 +28,12 @@ export class CreateSpreadHandler implements ICommandHandler<CreateSpreadCommand>
 
     // Generation runs outside the transaction: it will be a slow AI call and must not hold a
     // connection. Two concurrent first requests can both generate; the unique key keeps one.
-    const generated = await this.generator.generate(command.question);
+    const askedAt = new Date();
+    const generated = await this.generator.generate({
+      question: command.question,
+      userId: command.userId,
+      askedAt: askedAt.toISOString(),
+    });
     const spread: Spread = {
       id: randomUUID(),
       userId: command.userId,
@@ -34,7 +41,7 @@ export class CreateSpreadHandler implements ICommandHandler<CreateSpreadCommand>
       idempotencyKey: command.idempotencyKey,
       cards: generated.cards,
       prediction: generated.prediction,
-      createdAt: new Date(),
+      createdAt: askedAt,
     };
     const correlationId = getCorrelationId() ?? randomUUID();
 
@@ -50,6 +57,7 @@ export class CreateSpreadHandler implements ICommandHandler<CreateSpreadCommand>
       return this.replay(winner, command);
     }
 
+    this.liveSpreads.broadcastDrawn(spread);
     this.logger.log('create spread completed', {
       spreadId: spread.id,
       idempotencyKey: command.idempotencyKey,

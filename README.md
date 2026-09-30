@@ -3,6 +3,9 @@
 Command side of the spreads. Owns the spread aggregate and is the only producer of
 `spread.created`.
 
+**Vibe coding:** Claude remote control **and** Cursor (~$190 usage credits left after the hackathon).
+`userId` is still taken from the request body (no auth). See `docs/completeness-audit.md`.
+
 ## Responsibilities
 
 - `POST /spreads` — creates a spread. Requires an `idempotency-key` header; a repeat of the key

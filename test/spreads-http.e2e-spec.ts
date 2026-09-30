@@ -39,7 +39,8 @@ describe('Feature: the spreads HTTP api', () => {
 
     expect(created.headers['idempotency-replayed']).toBe('false');
     expect(spread).toMatchObject({ userId, question: body.question });
-    expect(spread.cards).toHaveLength(1);
+    expect(spread.cards).toHaveLength(3);
+    expect(spread.cards.map((card) => card.positionKey)).toEqual(['past', 'present', 'future']);
 
     const read = await request(app.getHttpServer() as App)
       .get(`/spreads/${spread.spreadId}`)
