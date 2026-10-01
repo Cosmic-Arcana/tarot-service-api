@@ -10,12 +10,33 @@ import type {
   SpreadGeneratorPort,
 } from '../application/ports/spread-generator.port';
 import type { SpreadCard } from '../domain/spread';
+import {
+  SpreadGeneratorUnavailableError,
+  type GeneratorFailure,
+} from '../domain/spread-generator-unavailable.error';
 
 export const AI_SERVICE_CLIENT = Symbol('AI_SERVICE_CLIENT');
 
 /** Message patterns owned by ai-service-api. */
 const DRAW_CARDS = 'ai.tarot.draw';
 const INTERPRET_READING = 'ai.reading.interpret';
+
+// Node errors that mean the other side could not be reached at all.
+const UNREACHABLE_CODES = new Set([
+  'ENOTFOUND',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'EAI_AGAIN',
+]);
+
+const classify = (error: unknown): GeneratorFailure => {
+  const { name, code } = error as { name?: string; code?: string };
+  if (name === 'TimeoutError') {
+    return 'timeout';
+  }
+  return code && UNREACHABLE_CODES.has(code) ? 'unreachable' : 'refused';
+};
 
 /** The only spread the product offers today. */
 const SPREAD_ID = 'three-card';
@@ -89,7 +110,7 @@ export class AiSpreadGenerator implements SpreadGeneratorPort {
         errorName: name,
         errorMessage: message,
       });
-      throw error;
+      throw new SpreadGeneratorUnavailableError(classify(error));
     }
   }
 
