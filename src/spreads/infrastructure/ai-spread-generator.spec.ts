@@ -4,11 +4,23 @@ import { NEVER, of, throwError } from 'rxjs';
 import { SpreadGeneratorUnavailableError } from '../domain/spread-generator-unavailable.error';
 import { AiSpreadGenerator } from './ai-spread-generator';
 
-const request = { question: 'will it work?', userId: 'user-1', askedAt: '2026-10-01T10:00:00.000Z' };
+const request = {
+  question: 'will it work?',
+  userId: 'user-1',
+  askedAt: '2026-10-01T10:00:00.000Z',
+};
 
 const drawn = {
   cards: [
-    { positionKey: 'past', cardId: 'queen-of-swords', reversed: false, positionLabel: 'Past', cardName: 'Queen of Swords', keywords: [], meaning: '' },
+    {
+      positionKey: 'past',
+      cardId: 'queen-of-swords',
+      reversed: false,
+      positionLabel: 'Past',
+      cardName: 'Queen of Swords',
+      keywords: [],
+      meaning: '',
+    },
   ],
 };
 
@@ -37,8 +49,13 @@ describe('Feature: generate a spread through ai-service-api', () => {
   });
 
   it('Given the ai service cannot be reached, When a spread is generated, Then the failure is reported as unreachable', async () => {
-    const refused = Object.assign(new Error('getaddrinfo ENOTFOUND ai-service-api'), { code: 'ENOTFOUND' });
-    const generator = new AiSpreadGenerator(clientReturning(() => throwError(() => refused)), 1_000);
+    const refused = Object.assign(new Error('getaddrinfo ENOTFOUND ai-service-api'), {
+      code: 'ENOTFOUND',
+    });
+    const generator = new AiSpreadGenerator(
+      clientReturning(() => throwError(() => refused)),
+      1_000,
+    );
 
     await expect(generator.generate(request)).rejects.toMatchObject({
       name: 'SpreadGeneratorUnavailableError',
@@ -47,7 +64,10 @@ describe('Feature: generate a spread through ai-service-api', () => {
   });
 
   it('Given the ai service never answers, When a spread is generated, Then it gives up in time and reports a timeout', async () => {
-    const generator = new AiSpreadGenerator(clientReturning(() => NEVER), 30);
+    const generator = new AiSpreadGenerator(
+      clientReturning(() => NEVER),
+      30,
+    );
 
     await expect(generator.generate(request)).rejects.toMatchObject({ reason: 'timeout' });
   });
@@ -62,8 +82,13 @@ describe('Feature: generate a spread through ai-service-api', () => {
   });
 
   it('Given any failure, When it is reported, Then the error says nothing about hosts or ports', async () => {
-    const refused = Object.assign(new Error('connect ECONNREFUSED 10.1.2.3:4001'), { code: 'ECONNREFUSED' });
-    const generator = new AiSpreadGenerator(clientReturning(() => throwError(() => refused)), 1_000);
+    const refused = Object.assign(new Error('connect ECONNREFUSED 10.1.2.3:4001'), {
+      code: 'ECONNREFUSED',
+    });
+    const generator = new AiSpreadGenerator(
+      clientReturning(() => throwError(() => refused)),
+      1_000,
+    );
 
     const error = await generator.generate(request).catch((cause: unknown) => cause);
 
@@ -74,11 +99,17 @@ describe('Feature: generate a spread through ai-service-api', () => {
   it('Given a failure, When it is reported, Then the cause is still logged once at the boundary', async () => {
     const refused = Object.assign(new Error('boom'), { code: 'ECONNRESET' });
     const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-    const generator = new AiSpreadGenerator(clientReturning(() => throwError(() => refused)), 1_000);
+    const generator = new AiSpreadGenerator(
+      clientReturning(() => throwError(() => refused)),
+      1_000,
+    );
 
     await generator.generate(request).catch(() => undefined);
 
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith('outbound call failed', expect.objectContaining({ outcome: 'error' }));
+    expect(warn).toHaveBeenCalledWith(
+      'outbound call failed',
+      expect.objectContaining({ outcome: 'error' }),
+    );
   });
 });

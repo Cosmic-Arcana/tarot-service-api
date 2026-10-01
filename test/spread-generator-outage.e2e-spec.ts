@@ -11,7 +11,10 @@ import { countRows, createTestApp, resetDatabase } from './support/test-app';
 describe('Feature: a spread generator outage is reported as one, not as a bug', () => {
   let app: INestApplication;
   let dataSource: DataSource;
-  const generate = jest.fn<ReturnType<SpreadGeneratorPort['generate']>, Parameters<SpreadGeneratorPort['generate']>>();
+  const generate = jest.fn<
+    ReturnType<SpreadGeneratorPort['generate']>,
+    Parameters<SpreadGeneratorPort['generate']>
+  >();
 
   const post = (idempotencyKey: string) =>
     request(app.getHttpServer() as App)
