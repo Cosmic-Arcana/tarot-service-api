@@ -82,3 +82,59 @@ describe('Feature: relay the outbox to the broker', () => {
     await expect(queue.getJobCountByTypes('waiting')).resolves.toBe(1);
   });
 });
+
+describe('Feature: the relay drains a backlog without idling between full batches', () => {
+  const pollIntervalMs = 1_500;
+  const batchSize = 5;
+  const backlog = 23;
+  let app: INestApplication;
+  let dataSource: DataSource;
+  const overridden = {
+    OUTBOX_RELAY_ENABLED: process.env.OUTBOX_RELAY_ENABLED,
+    OUTBOX_POLL_INTERVAL_MS: process.env.OUTBOX_POLL_INTERVAL_MS,
+    OUTBOX_BATCH_SIZE: process.env.OUTBOX_BATCH_SIZE,
+  };
+
+  const pendingCount = () =>
+    dataSource
+      .query<[{ count: string }]>(
+        `SELECT count(*)::text AS count FROM outbox WHERE status = 'pending'`,
+      )
+      .then(([{ count }]) => Number(count));
+
+  beforeAll(async () => {
+    process.env.OUTBOX_RELAY_ENABLED = 'true';
+    process.env.OUTBOX_POLL_INTERVAL_MS = String(pollIntervalMs);
+    process.env.OUTBOX_BATCH_SIZE = String(batchSize);
+    app = await createTestApp();
+    dataSource = app.get(DataSource);
+  });
+
+  afterAll(async () => {
+    await app.close();
+    for (const [key, value] of Object.entries(overridden)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  });
+
+  it('Given a backlog of several batches, When the relay ticks, Then every row is published within one poll interval of the first tick', async () => {
+    await resetDatabase(dataSource);
+    const commandBus = app.get(CommandBus);
+    for (let i = 0; i < backlog; i += 1) {
+      await commandBus.execute(
+        new CreateSpreadCommand(randomUUID(), `question ${i}`, randomUUID()),
+      );
+    }
+
+    const deadline = Date.now() + 2 * pollIntervalMs + 500;
+    while ((await pendingCount()) > 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    await expect(pendingCount()).resolves.toBe(0);
+  });
+});
