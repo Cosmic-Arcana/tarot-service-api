@@ -95,23 +95,27 @@ export class OutboxRelay implements OnApplicationBootstrap, OnApplicationShutdow
     });
   }
 
-  private scheduleNextTick(): void {
+  private scheduleNextTick(delayMs = this.settings.pollIntervalMs): void {
     if (this.stopped) {
       return;
     }
     this.timer = setTimeout(() => {
       this.inFlight = this.relayPending()
-        .catch((error: Error) =>
+        // A full batch means a backlog is likely, so the next tick starts at once. A short batch,
+        // including one cut short by a publish failure, waits the poll interval as before.
+        .then((published) => published === this.settings.batchSize)
+        .catch((error: Error) => {
           this.logger.warn('outbox relay tick failed', {
             errorName: error.name,
             errorMessage: error.message,
-          }),
-        )
-        .finally(() => {
+          });
+          return false;
+        })
+        .then((backlogged) => {
           this.inFlight = null;
-          this.scheduleNextTick();
+          this.scheduleNextTick(backlogged ? 0 : this.settings.pollIntervalMs);
         });
-    }, this.settings.pollIntervalMs);
+    }, delayMs);
   }
 
   private publish(queue: Queue, row: OutboxEntity): Promise<boolean> {
