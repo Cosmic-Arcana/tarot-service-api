@@ -6,7 +6,10 @@ import { randomUUID } from 'node:crypto';
 import type { Queue } from 'bullmq';
 import { DataSource } from 'typeorm';
 import { SPREAD_CREATED_EVENT, SPREAD_CREATED_QUEUE } from '@cosmic-arcana/sdk';
-import { getCorrelationId, runWithCorrelationId } from '../src/common/correlation/correlation.storage';
+import {
+  getCorrelationId,
+  runWithCorrelationId,
+} from '../src/common/correlation/correlation.storage';
 import { CreateSpreadCommand } from '../src/spreads/application/commands/create-spread.command';
 import { OutboxRelay } from '../src/outbox/outbox-relay.service';
 import { createTestApp, resetDatabase } from './support/test-app';
@@ -76,14 +79,16 @@ describe('Feature: the relay hands a batch to the broker in one call', () => {
 
     const rows = await outboxRows();
     const jobs = await Promise.all(rows.map((row) => queue.getJob(row.id)));
-    expect(jobs.map((job) => (job?.data as { meta: { correlationId: string } }).meta.correlationId)).toEqual([
-      first,
-      second,
-    ]);
+    expect(
+      jobs.map((job) => (job?.data as { meta: { correlationId: string } }).meta.correlationId),
+    ).toEqual([first, second]);
   });
 
   it('Given a batch, When it is published, Then one completion is logged per event, each under its own correlation id', async () => {
-    const ids = [`corr-log-a-${randomUUID().slice(0, 8)}`, `corr-log-b-${randomUUID().slice(0, 8)}`];
+    const ids = [
+      `corr-log-a-${randomUUID().slice(0, 8)}`,
+      `corr-log-b-${randomUUID().slice(0, 8)}`,
+    ];
     for (const id of ids) {
       await createSpread(id);
     }
