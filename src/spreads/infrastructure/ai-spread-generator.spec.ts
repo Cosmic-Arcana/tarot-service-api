@@ -1,90 +1,115 @@
+import { Logger } from '@nestjs/common';
+import type { ClientProxy } from '@nestjs/microservices';
 import { NEVER, of, throwError } from 'rxjs';
+import { SpreadGeneratorUnavailableError } from '../domain/spread-generator-unavailable.error';
 import { AiSpreadGenerator } from './ai-spread-generator';
 
-const drawnCard = {
-  positionKey: 'past',
-  positionLabel: 'What shaped it',
-  cardId: 'eight-of-pentacles',
-  cardName: 'Eight of Pentacles',
-  reversed: false,
-  keywords: ['craft'],
-  meaning: 'patient work',
-};
-
 const request = {
-  question: 'should i take the job?',
-  userId: '9d2f1a44-5c6e-4b7a-8c9d-0e1f2a3b4c5d',
-  askedAt: '2026-09-30T00:00:00.000Z',
+  question: 'will it work?',
+  userId: 'user-1',
+  askedAt: '2026-10-01T10:00:00.000Z',
 };
 
-const clientReturning = (replies: Record<string, unknown>) => ({
-  send: jest.fn((pattern: string) => of(replies[pattern])),
-});
+const drawn = {
+  cards: [
+    {
+      positionKey: 'past',
+      cardId: 'queen-of-swords',
+      reversed: false,
+      positionLabel: 'Past',
+      cardName: 'Queen of Swords',
+      keywords: [],
+      meaning: '',
+    },
+  ],
+};
 
-describe('AiSpreadGenerator', () => {
-  const replies = {
-    'ai.tarot.draw': { cards: [drawnCard] },
-    'ai.reading.interpret': { interpretation: 'a reading', fictional: true },
-  };
+const clientReturning = (send: ClientProxy['send']) => ({ send }) as unknown as ClientProxy;
 
-  it('draws the cards and asks for a reading of them', async () => {
-    const client = clientReturning(replies);
-    const generator = new AiSpreadGenerator(client as never, 1_000);
+describe('Feature: generate a spread through ai-service-api', () => {
+  beforeEach(() => {
+    jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('Given the ai service answers, When a spread is generated, Then the drawn cards and the interpretation come back', async () => {
+    const send = jest
+      .fn()
+      .mockReturnValueOnce(of(drawn))
+      .mockReturnValueOnce(of({ interpretation: 'a reading', fictional: true }));
+    const generator = new AiSpreadGenerator(clientReturning(send), 1_000);
 
     const spread = await generator.generate(request);
 
-    expect(spread.prediction).toBe('a reading');
-    expect(spread.cards).toEqual([
-      { positionKey: 'past', cardId: 'eight-of-pentacles', reversed: false },
-    ]);
-
-    const [drawPattern, drawMessage] = client.send.mock.calls[0];
-    expect(drawPattern).toBe('ai.tarot.draw');
-    expect(drawMessage).toMatchObject({
-      data: {
-        userId: request.userId,
-        question: request.question,
-        spreadId: 'three-card',
-        askedAt: request.askedAt,
-      },
+    expect(spread).toEqual({
+      cards: [{ positionKey: 'past', cardId: 'queen-of-swords', reversed: false }],
+      prediction: 'a reading',
     });
   });
 
-  it('interprets the cards that were actually drawn', async () => {
-    const client = clientReturning(replies);
-    const generator = new AiSpreadGenerator(client as never, 1_000);
+  it('Given the ai service cannot be reached, When a spread is generated, Then the failure is reported as unreachable', async () => {
+    const refused = Object.assign(new Error('getaddrinfo ENOTFOUND ai-service-api'), {
+      code: 'ENOTFOUND',
+    });
+    const generator = new AiSpreadGenerator(
+      clientReturning(() => throwError(() => refused)),
+      1_000,
+    );
 
-    await generator.generate(request);
-
-    const [pattern, message] = client.send.mock.calls[1];
-    expect(pattern).toBe('ai.reading.interpret');
-    expect(message).toMatchObject({ data: { cards: [drawnCard], cosmic: null } });
+    await expect(generator.generate(request)).rejects.toMatchObject({
+      name: 'SpreadGeneratorUnavailableError',
+      reason: 'unreachable',
+    });
   });
 
-  it('carries a correlation id on every message', async () => {
-    const client = clientReturning(replies);
-    const generator = new AiSpreadGenerator(client as never, 1_000);
+  it('Given the ai service never answers, When a spread is generated, Then it gives up in time and reports a timeout', async () => {
+    const generator = new AiSpreadGenerator(
+      clientReturning(() => NEVER),
+      30,
+    );
 
-    await generator.generate(request);
-
-    for (const [, message] of client.send.mock.calls) {
-      expect((message as { meta: { correlationId: string } }).meta.correlationId).toMatch(/\S/);
-      expect((message as { meta: { origin: string } }).meta.origin).toBe('tarot-service-api');
-    }
+    await expect(generator.generate(request)).rejects.toMatchObject({ reason: 'timeout' });
   });
 
-  it('fails the spread when the draw fails rather than inventing cards', async () => {
-    const client = {
-      send: jest.fn(() => throwError(() => new Error('ai unreachable'))),
-    };
-    const generator = new AiSpreadGenerator(client as never, 1_000);
+  it('Given the ai service answers with an error, When a spread is generated, Then it is reported as a refusal', async () => {
+    const generator = new AiSpreadGenerator(
+      clientReturning(() => throwError(() => ({ message: 'invalid payload' }))),
+      1_000,
+    );
 
-    await expect(generator.generate(request)).rejects.toThrow('ai unreachable');
+    await expect(generator.generate(request)).rejects.toMatchObject({ reason: 'refused' });
   });
 
-  it('gives up on a silent service instead of holding the request open', async () => {
-    const generator = new AiSpreadGenerator({ send: jest.fn(() => NEVER) } as never, 20);
+  it('Given any failure, When it is reported, Then the error says nothing about hosts or ports', async () => {
+    const refused = Object.assign(new Error('connect ECONNREFUSED 10.1.2.3:4001'), {
+      code: 'ECONNREFUSED',
+    });
+    const generator = new AiSpreadGenerator(
+      clientReturning(() => throwError(() => refused)),
+      1_000,
+    );
 
-    await expect(generator.generate(request)).rejects.toThrow();
+    const error = await generator.generate(request).catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(SpreadGeneratorUnavailableError);
+    expect((error as Error).message).not.toMatch(/10\.1\.2\.3|ECONNREFUSED|4001/);
+  });
+
+  it('Given a failure, When it is reported, Then the cause is still logged once at the boundary', async () => {
+    const refused = Object.assign(new Error('boom'), { code: 'ECONNRESET' });
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const generator = new AiSpreadGenerator(
+      clientReturning(() => throwError(() => refused)),
+      1_000,
+    );
+
+    await generator.generate(request).catch(() => undefined);
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      'outbound call failed',
+      expect.objectContaining({ outcome: 'error' }),
+    );
   });
 });

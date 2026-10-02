@@ -1,12 +1,15 @@
 import {
   BadRequestException,
   Body,
+  BadGatewayException,
   ConflictException,
   Controller,
+  GatewayTimeoutException,
   Get,
   Headers,
   HttpStatus,
   NotFoundException,
+  ServiceUnavailableException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -19,6 +22,7 @@ import type { SpreadDetailsV1 } from '@cosmic-arcana/sdk';
 import { CreateSpreadCommand } from '../application/commands/create-spread.command';
 import { GetSpreadQuery } from '../application/queries/get-spread.query';
 import { IdempotencyKeyConflictError } from '../domain/idempotency-key-conflict.error';
+import { SpreadGeneratorUnavailableError } from '../domain/spread-generator-unavailable.error';
 import { CreateSpreadDto } from './create-spread.dto';
 import {
   IDEMPOTENCY_KEY_HEADER,
@@ -27,6 +31,16 @@ import {
 } from './idempotency-key';
 import { toSpreadDetailsV1 } from './spread-details.mapper';
 import { InternalTokenGuard } from './internal-token.guard';
+
+/** 503 when it could not be reached, 504 when it took too long, 502 when it answered badly. */
+const generatorOutage = ({ reason, message }: SpreadGeneratorUnavailableError): Error => {
+  if (reason === 'unreachable') {
+    return new ServiceUnavailableException(message);
+  }
+  return reason === 'timeout'
+    ? new GatewayTimeoutException(message)
+    : new BadGatewayException(message);
+};
 
 @UseGuards(InternalTokenGuard)
 @Controller('spreads')
@@ -58,6 +72,9 @@ export class SpreadsController {
     } catch (error) {
       if (error instanceof IdempotencyKeyConflictError) {
         throw new ConflictException(error.message);
+      }
+      if (error instanceof SpreadGeneratorUnavailableError) {
+        throw generatorOutage(error);
       }
       throw error;
     }

@@ -48,8 +48,12 @@ export class LoggingInterceptor implements NestInterceptor {
             errorName: error.name,
             errorMessage: error.message,
           };
-          if (statusCode >= 500) {
+          if (statusCode === Number(HttpStatus.INTERNAL_SERVER_ERROR)) {
             this.logger.error('inbound failed', fields, error.stack);
+          } else if (statusCode >= 500) {
+            // A dependency outage (502, 503, 504) is expected to happen: the call that failed was
+            // already logged where it was made, so repeating it here with a stack adds only noise.
+            this.logger.warn('inbound failed', fields);
           } else {
             this.logger.warn('inbound rejected', fields);
           }
