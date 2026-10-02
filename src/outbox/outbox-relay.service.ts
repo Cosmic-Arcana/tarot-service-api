@@ -71,17 +71,17 @@ export class OutboxRelay implements OnApplicationBootstrap, OnApplicationShutdow
         .getMany();
 
       const published: string[] = [];
-      for (const row of rows) {
-        const queue = this.queues.get(row.eventType);
+      for (const [eventType, group] of groupByEventType(rows)) {
+        const queue = this.queues.get(eventType);
         if (!queue) {
-          this.logger.error('outbox event type has no queue', { eventType: row.eventType });
+          this.logger.error('outbox event type has no queue', { eventType });
           continue;
         }
-        // Stop at the first failure: the broker is most likely down, and stopping keeps order.
-        if (!(await this.publish(queue, row))) {
+        // Stop at the first failed batch: the broker is most likely down, and stopping keeps order.
+        if (!(await this.publishBatch(queue, group))) {
           break;
         }
-        published.push(row.id);
+        published.push(...group.map((row) => row.id));
       }
 
       if (published.length > 0) {
@@ -118,40 +118,73 @@ export class OutboxRelay implements OnApplicationBootstrap, OnApplicationShutdow
     }, delayMs);
   }
 
-  private publish(queue: Queue, row: OutboxEntity): Promise<boolean> {
-    return runWithCorrelationId(row.correlationId, async () => {
-      const startedAt = process.hrtime.bigint();
+  /**
+   * One round trip to the broker for the whole group. A refused batch publishes nothing, so the
+   * rows stay pending and go out together on the next tick; a crash between publish and commit
+   * re-publishes, which the job id absorbs.
+   */
+  private async publishBatch(queue: Queue, rows: OutboxEntity[]): Promise<boolean> {
+    const startedAt = process.hrtime.bigint();
+    const jobs = rows.map((row) => {
       const envelope: EventEnvelope<object> = {
         meta: { correlationId: row.correlationId, producer: this.producer },
         data: row.payload,
       };
-      const base = { messagePattern: row.eventType, eventId: row.id };
-
-      try {
-        await queue.add(row.eventType, envelope, {
+      return {
+        name: row.eventType,
+        data: envelope,
+        opts: {
           jobId: row.id,
           attempts: this.settings.deliveryAttempts,
           backoff: { type: 'exponential', delay: this.settings.deliveryBackoffMs },
           removeOnComplete: { age: COMPLETED_JOB_RETENTION_S },
           removeOnFail: false,
-        });
-        this.logger.log('outbound publish completed', {
-          ...base,
-          durationMs: elapsedMs(startedAt),
-          outcome: 'success',
-        });
-        return true;
-      } catch (error) {
-        const { name, message } = error as Error;
-        this.logger.warn('outbound publish failed', {
-          ...base,
-          durationMs: elapsedMs(startedAt),
-          outcome: 'error',
-          errorName: name,
-          errorMessage: message,
-        });
-        return false;
-      }
+        },
+      };
     });
+
+    try {
+      await queue.addBulk(jobs);
+    } catch (error) {
+      const { name, message } = error as Error;
+      this.logger.warn('outbound publish failed', {
+        messagePattern: rows[0].eventType,
+        batchSize: rows.length,
+        durationMs: elapsedMs(startedAt),
+        outcome: 'error',
+        errorName: name,
+        errorMessage: message,
+      });
+      return false;
+    }
+
+    // One line per event, each under its own correlation id, so a request can still be followed.
+    const durationMs = elapsedMs(startedAt);
+    for (const row of rows) {
+      runWithCorrelationId(row.correlationId, () =>
+        this.logger.log('outbound publish completed', {
+          messagePattern: row.eventType,
+          eventId: row.id,
+          batchSize: rows.length,
+          durationMs,
+          outcome: 'success',
+        }),
+      );
+    }
+    return true;
   }
 }
+
+/** Rows arrive oldest first; grouping by event type keeps that order inside each group. */
+const groupByEventType = (rows: OutboxEntity[]): Map<string, OutboxEntity[]> => {
+  const groups = new Map<string, OutboxEntity[]>();
+  for (const row of rows) {
+    const group = groups.get(row.eventType);
+    if (group) {
+      group.push(row);
+    } else {
+      groups.set(row.eventType, [row]);
+    }
+  }
+  return groups;
+};
